@@ -1,0 +1,149 @@
+---
+title: "NYPD Shooting Incident Data Report"
+author: "Adam Baker"
+date: "5/24/2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## NYPD Shooting Incident Peer Reviewed Assignment
+
+### Reading in the Data and Data Summary
+The first step is to read in the data. The NYPD Shooting Incident Historic data can be found at the following web address: https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD. For this project I will simply download the file as a csv, then read it in below. While this is not the most reproducible way to implement in code, it will be easiest in this assignment. Functions like "getURL" from an R package like RCurl would be a bit more reproducible, but for simplicity we'll do this.
+
+```{r Data Read In}
+library(tidyverse)
+library(dplyr)
+nypd_data <- read.csv('C:/Users/abak0/Documents/CU Boulder Masters/Data Science as a Field/NYPD_Shooting_Incident_Data__Historic_.csv')
+```
+
+Also in the code chunk above I've loaded in two packages, tidyverse and dplyr. These will be utilized later on in order to clean and analyze the data.
+
+Now that the data has been imported, let's take a look at what the data has to offer in terms of variables and a summary of those variables:
+
+```{r Data Look}
+
+str(nypd_data)
+print("Summary of Data: ")
+summary(nypd_data)
+```
+### Changing Data Types and Removing Missing Data
+
+As we have just loaded in the data as a csv file, not all of the variables that should be factors are, so we'll go ahead and change those over. These columns that will be changed include BORO, PRECINCT, JURISDICTION_CODE, LOCATION_DESC, STATISTICAL_MURDER_FLAG, PERP_AGE_GROUP, PERP_SEX, PERP_RACE, VIC_AGE_GROUP, VIC_SEX, and VIC_RACE. Another variable that can be changed is OCCUR_DATE, as this is a date rather than just a string. 
+
+```{r Changing Data to Factors}
+
+cols <- c("BORO", "PRECINCT", "JURISDICTION_CODE", "LOCATION_DESC", "STATISTICAL_MURDER_FLAG",
+          "PERP_AGE_GROUP", "PERP_SEX", "PERP_RACE", "VIC_AGE_GROUP", "VIC_SEX", "VIC_RACE")
+
+nypd_data[cols] <- lapply(nypd_data[cols], factor)
+
+nypd_data$OCCUR_DATE <- as.Date(nypd_data$OCCUR_DATE, format = "%m/%d/%Y")
+
+str(nypd_data)
+
+```
+
+Now that we have proper types on columns we may use in the future, some columns can be dropped. In the analysis there is no need for the specific location data as "BORO" can be used to estimate the location of the crime. Also, the occurrence time is a bit too specific for any analysis at this point, so that will also be dropped. To do so the library "dplyr" will be used to remove those unwanted columns.
+
+```{r Dropping Unwanted Columns}
+
+nypd_data <- nypd_data %>%
+  select(-c(OCCUR_TIME, X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat))
+
+```
+
+Now that we have all the columns we may want in the future, we need to see if there is missing data. This could mean that there are incomplete sets of information, or maybe a specific column has blank values often. To check, we can use the complete cases function to check for data that does not have any missing values:
+
+```{r Checking Missing Data}
+
+#Checking for "incomplete" data
+nypd_data[!complete.cases(nypd_data),]
+
+```
+
+While there are only two rows here that are incomplete, there is also some variables that have blank values for some observations. First we will need to recode these values as "NA" in order to easily get rid of those rows.
+
+```{r Recoding Blanks}
+
+#Checking for "incomplete" data
+
+nypd_data[nypd_data==""]<-NA
+
+```
+
+Now using the same process before we can see how many incomplete observations there are:
+
+```{r Checking Missing Data again}
+
+#Checking for "incomplete" data
+nypd_data[!complete.cases(nypd_data),]
+
+```
+
+Based on this second output, we can see that there are a total of 16,725 observations that are incomplete, meaning they have missing data at some point. This could be down to a certain variable, like "LOCATION_DESC", but to more easily deal with all of the remaining variables we can remove these completely. This will leave us with a fraction of our overall data, but it will all be quality in the fact that there will be no missing values.
+
+```{r Removing Missing Values}
+
+nypd_data <- na.omit(nypd_data)
+
+summary(nypd_data)
+```
+
+With 6,843 observations left, we can now get into a simple analysis.
+
+### Analysis and Visuals
+
+For a simple analysis I will look at the how the number of occurrences has changed over time based on the victim's age group.
+
+First, we'll look at the distributions of the two variables of interest:
+
+```{r Visual}
+library(ggplot2)
+
+plot1 <- ggplot(data = nypd_data, aes(x= VIC_AGE_GROUP))+
+  geom_histogram(stat= "count")+
+  labs(title = "Victim Age Group Distribution", y = "Count of Victims", x = "Victim Age Group")
+
+plot1
+
+plot2 <- ggplot(data = nypd_data, aes(x= OCCUR_DATE))+
+  geom_histogram(stat= "count")+
+  labs(title = "Perpetrator Age Group Distribution", y = "Count of Perpetrators", x = "Perpetrator Age Group")
+plot2
+
+```
+
+Based on the Victim Age Group Distribution plot, most of the victims end up being less than 44, excluding the few that are unknown of course.
+
+Overall, it looks as though that the number of occurrences has decreased over time, but it will be interesting to see how that changes when including the victim's age group.
+
+
+```{r Model}
+
+linMod <- lm(as.numeric(OCCUR_DATE)~factor(VIC_AGE_GROUP) , data = nypd_data)
+summary(linMod)
+
+```
+What does that output really mean though? Well since R treats dates as numeric when doing linear regression, a look at the intercept and the first group (18-24) will show that the different victim age groups are more common at different times. Let's look at what the dates are below:
+
+```{r Model Interpretation}
+
+#the default origin is "1970-01-01"
+
+as.Date(14826.817, origin = "1970-01-01")
+
+as.Date(14826.817+85.781, origin = "1970-01-01")
+
+```
+
+This means that the average occurrence regardless of the victim's age happened around "2010-08-05" and then when factoring in that the victim was in the 18-24 year old group the average occurrence would have happened around "2010-10-30". There are two statistically significant age groups, the 25-44 age group and the 44-65 age group, meaning that occurrences that happen with these age groups are different than the rest.
+
+### Possible Biases
+
+While this simple analysis tells us a bit about how the victim's age comes into play when predicting when a shooting happened over the years, it doesn't tell us the full story. Since this model only took the victim's age we miss out on key information, like if it resulted in a death, where it happened within New York, and other key victim and perpetrator demographics. Moving forward, this analysis could be improved by looking more in depth into how the occurrences changed over time, utilizing an ARIMA model with more demographics to get a better picture. It should also be noted that there are some victim's whose age was unknown, which may play a factor in determining results. Another source of bias to consider is that these are only reported shootings, and of those only shootings that have complete data. As mentioned earlier, if there was unknown data then the data was dropped, so there is even more information out there that could be utilized in the future.
